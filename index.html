@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HamDash — Amateur Radio Dashboard</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+
+  <style>
+    :root {
+      --bg: #0a0e14;
+      --panel: #111820;
+      --border: #1e2a38;
+      --text: #c8d6e5;
+      --muted: #7a8b9c;
+      --accent: #ff8c00;
+      --accent2: #00d4aa;
+      --de: #00d4aa;
+      --dx: #ff6b6b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #0f1620 0%, var(--bg) 100%);
+    }
+
+    .logo {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+    .logo span { color: var(--text); font-weight: 400; }
+
+    .clocks {
+      display: flex;
+      gap: 28px;
+      align-items: baseline;
+    }
+
+    .clock-block { text-align: center; }
+    .clock-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .clock-time {
+      font-size: 1.85rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .clock-time.utc { color: var(--accent); }
+    .clock-date {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr 280px;
+      gap: 12px;
+      padding: 12px;
+      height: calc(100vh - 72px);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .map-wrap {
+      position: relative;
+      background: #02060c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #0a1520;
+    }
+
+    /* Darken OSM tiles a bit for night theme */
+    .leaflet-tile-pane {
+      filter: brightness(0.72) contrast(1.05) saturate(0.85);
+    }
+
+    .map-overlay {
+      position: absolute;
+      bottom: 10px;
+      left: 12px;
+      z-index: 1000;
+      font-size: 0.72rem;
+      color: var(--muted);
+      background: rgba(0,0,0,0.65);
+      padding: 4px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    /* Solar data grid */
+    .solar-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .solar-item {
+      background: #0c121a;
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+    }
+    .solar-item .val {
+      font-size: 1.45rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent2);
+    }
+    .solar-item .lab {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+    }
+    .solar-item.wide { grid-column: 1 / -1; }
+
+    .status {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: auto;
+      padding-top: 10px;
+    }
+    .status.ok { color: var(--accent2); }
+    .status.err { color: #ff6b6b; }
+
+    /* Location form */
+    .loc-form label {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 3px;
+      margin-top: 10px;
+    }
+    .loc-form input {
+      width: 100%;
+      background: #0c121a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: 0.9rem;
+    }
+    .loc-form input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    button {
+      flex: 1;
+      background: var(--accent);
+      color: #111;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    button:hover { filter: brightness(1.1); }
+
+    .path-info {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    .path-info strong { color: var(--accent2); }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .legend .de::before { background: var(--de); }
+    .legend .dx::before { background: var(--dx); }
+    .legend .gray::before { background: var(--accent); }
+
+    footer {
+      text-align: center;
+      padding: 8px;
+      font-size: 0.7rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+
+    /* Custom marker styles */
+    .de-marker, .dx-marker {
+      background: transparent;
+      border: none;
+    }
+
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        height: auto;
+      }
+      .map-wrap { min-height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">HamDash <span>· Amateur Radio Dashboard</span></div>
+    <div class="clocks">
+      <div class="clock-block">
+        <div class="clock-label">UTC</div>
+        <div class="clock-time utc" id="utcTime">--:--:--</div>
+        <div class="clock-date" id="utcDate">—</div>
+      </div>
+      <div class="clock-block">
+        <div class="clock-label">Local (DE)</div>
+        <div class="clock-time" id="localTime">--:--:--</div>
+        <div class="clock-date" id="localDate">—</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left panel: Solar / Space Weather -->
+    <aside class="panel">
+      <h2>Space Weather</h2>
+      <div class="solar-grid" id="solarGrid">
+        <div class="solar-item"><div class="val" id="sfi">—</div><div class="lab">SFI</div></div>
+        <div class="solar-item"><div class="val" id="ssn">—</div><div class="lab">SSN</div></div>
+        <div class="solar-item"><div class="val" id="kp">—</div><div class="lab">Kp</div></div>
+        <div class="solar-item"><div class="val" id="aIndex">—</div><div class="lab">A-Index</div></div>
+        <div class="solar-item"><div class="val" id="xray">—</div><div class="lab">X-Ray</div></div>
+        <div class="solar-item"><div class="val" id="bz">—</div><div class="lab">Bz (nT)</div></div>
+        <div class="solar-item wide"><div class="val" id="swind" style="font-size:1.15rem">—</div><div class="lab">Solar Wind</div></div>
+      </div>
+      <div class="status" id="solarStatus">Loading solar data…</div>
+    </aside>
+
+    <!-- Center: Map -->
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-overlay" id="mapInfo">Grayline · Subsolar point · Click map to set DX</div>
+    </section>
+
+    <!-- Right panel: Locations -->
+    <aside class="panel">
+      <h2>Station Locations</h2>
+      <div class="loc-form">
+        <label>DE Latitude</label>
+        <input type="number" id="deLat" step="0.0001" value="40.7128" />
+        <label>DE Longitude</label>
+        <input type="number" id="deLon" step="0.0001" value="-74.0060" />
+        <label>DX Latitude</label>
+        <input type="number" id="dxLat" step="0.0001" value="51.5074" />
+        <label>DX Longitude</label>
+        <input type="number" id="dxLon" step="0.0001" value="-0.1278" />
+        <div class="btn-row">
+          <button id="btnApply">Apply</button>
+          <button class="secondary" id="btnGeo">Use My Location</button>
+        </div>
+      </div>
+
+      <div class="path-info" id="pathInfo">
+        <div>Distance: <strong id="dist">—</strong></div>
+        <div>Short path bearing: <strong id="bearing">—</strong></div>
+        <div>Long path bearing: <strong id="bearingLP">—</strong></div>
+        <div style="margin-top:8px;font-size:0.78rem;color:var(--muted)">
+          Grid squares & more coming soon
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="de">DE</span>
+        <span class="dx">DX</span>
+        <span class="gray">Grayline</span>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    HamDash · OpenStreetMap + Leaflet · Space weather via MapForHam / NOAA · Runs in your browser
+  </footer>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+
+  <script>
+    // ========== State ==========
+    const state = {
+      de: { lat: 40.7128, lon: -74.0060 },
+      dx: { lat: 51.5074, lon: -0.1278 },
+      solar: null
+    };
+
+    // ========== Clocks ==========
+    function updateClocks() {
+      const now = new Date();
+      document.getElementById('utcTime').textContent =
+        String(now.getUTCHours()).padStart(2,'0') + ':' +
+        String(now.getUTCMinutes()).padStart(2,'0') + ':' +
+        String(now.getUTCSeconds()).padStart(2,'0');
+      document.getElementById('utcDate').textContent = now.toLocaleDateString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'
+      });
+
+      document.getElementById('localTime').textContent =
+        String(now.getHours()).padStart(2,'0') + ':' +
+        String(now.getMinutes()).padStart(2,'0') + ':' +
+        String(now.getSeconds()).padStart(2,'0');
+      document.getElementById('localDate').textContent = now.toLocaleDateString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+      });
+    }
+
+    // ========== Solar position ==========
+    function solarPosition(date) {
+      const rad = Math.PI / 180;
+      const deg = 180 / Math.PI;
+      const jd = date.getTime() / 86400000 + 2440587.5;
+      const t = (jd - 2451545.0) / 36525;
+
+      let L0 = (280.46646 + t * (36000.76983 + t * 0.0003032)) % 360;
+      let M  = (357.52911 + t * (35999.05029 - 0.0001537 * t)) % 360;
+      const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+
+      const C = Math.sin(M * rad) * (1.914602 - t * (0.004817 + 0.000014 * t))
+              + Math.sin(2 * M * rad) * (0.019993 - 0.000101 * t)
+              + Math.sin(3 * M * rad) * 0.000289;
+
+      const sunLong = L0 + C;
+      const omega = 125.04 - 1934.136 * t;
+      const lambda = sunLong - 0.00569 - 0.00478 * Math.sin(omega * rad);
+
+      const eps0 = 23 + (26 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60) / 60;
+      const eps = eps0 + 0.00256 * Math.cos(omega * rad);
+
+      const decl = Math.asin(Math.sin(eps * rad) * Math.sin(lambda * rad)) * deg;
+
+      const y = Math.tan((eps * rad) / 2);
+      const y2 = y * y;
+      const eqTime = 4 * deg * (
+        y2 * Math.sin(2 * L0 * rad)
+        - 2 * e * Math.sin(M * rad)
+        + 4 * e * y2 * Math.sin(M * rad) * Math.cos(2 * L0 * rad)
+        - 0.5 * y2 * y2 * Math.sin(4 * L0 * rad)
+        - 1.25 * e * e * Math.sin(2 * M * rad)
+      );
+
+      const minutes = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60;
+      let lon = -((minutes + eqTime) / 4 - 180);
+      while (lon < -180) lon += 360;
+      while (lon > 180) lon -= 360;
+
+      return { lat: decl, lon };
+    }
+
+    // ========== Great-circle helpers ==========
+    function toRad(d) { return d * Math.PI / 180; }
+    function toDeg(r) { return r * 180 / Math.PI; }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function bearing(lat1, lon1, lat2, lon2) {
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
+      const Δλ = toRad(lon2 - lon1);
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function greatCirclePoints(a, b, steps = 64) {
+      const pts = [];
+      const lat1 = toRad(a.lat), lon1 = toRad(a.lon);
+      const lat2 = toRad(b.lat), lon2 = toRad(b.lon);
+      const d = 2 * Math.asin(Math.sqrt(
+        Math.sin((lat2-lat1)/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin((lon2-lon1)/2)**2
+      ));
+      if (d < 1e-10) return [[a.lat, a.lon]];
+
+      for (let i = 0; i <= steps; i++) {
+        const f = i / steps;
+        const A = Math.sin((1-f)*d) / Math.sin(d);
+        const B = Math.sin(f*d) / Math.sin(d);
+        const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+        const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+        const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+        const lat = toDeg(Math.atan2(z, Math.sqrt(x*x + y*y)));
+        const lon = toDeg(Math.atan2(y, x));
+        pts.push([lat, lon]);
+      }
+      return pts;
+    }
+
+    function updatePathInfo() {
+      const d = haversine(state.de.lat, state.de.lon, state.dx.lat, state.dx.lon);
+      const b = bearing(state.de.lat, state.de.lon, state.dx.lat, state.dx.lon);
+      document.getElementById('dist').textContent = `${d.toFixed(0)} km (${(d * 0.539957).toFixed(0)} nm)`;
+      document.getElementById('bearing').textContent = `${b.toFixed(1)}°`;
+      document.getElementById('bearingLP').textContent = `${((b + 180) % 360).toFixed(1)}°`;
+    }
+
+    // ========== Map (Leaflet + OSM) ==========
+    let map, deMarker, dxMarker, pathLine, graylineLayer, sunMarker;
+
+    function initMap() {
+      map = L.map('map', {
+        worldCopyJump: true,
+        minZoom: 1,
+        maxZoom: 8,
+        zoomControl: true
+      }).setView([20, 0], 2);
+
+      // OpenStreetMap tiles — no API key required
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+      }).addTo(map);
+
+      // Click to set DX
+      map.on('click', (e) => {
+        state.dx.lat = e.latlng.lat;
+        state.dx.lon = e.latlng.lng;
+        document.getElementById('dxLat').value = state.dx.lat.toFixed(4);
+        document.getElementById('dxLon').value = state.dx.lon.toFixed(4);
+        updatePathInfo();
+        updateMapOverlays();
+      });
+
+      updateMapOverlays();
+    }
+
+    function createIcon(color, label) {
+      return L.divIcon({
+        className: label.toLowerCase() + '-marker',
+        html: `<div style="
+          background:${color};
+          width:14px;height:14px;border-radius:50%;
+          border:2px solid #fff;
+          box-shadow:0 0 4px rgba(0,0,0,0.6);
+        "></div>
+        <div style="
+          color:${color};font-weight:700;font-size:11px;
+          text-shadow:0 0 3px #000;margin-top:2px;text-align:center;
+        ">${label}</div>`,
+        iconSize: [30, 30],
+        iconAnchor: [7, 7]
+      });
+    }
+
+    function getGraylineCoords() {
+      const sun = solarPosition(new Date());
+      const pts = [];
+      const steps = 180;
+      const decl = toRad(sun.lat);
+
+      for (let i = 0; i <= steps; i++) {
+        const lon = -180 + (360 * i / steps);
+        const dlon = toRad(lon - sun.lon);
+        let lat;
+        if (Math.abs(sun.lat) < 0.15) {
+          // Near equinox
+          lat = (Math.abs(dlon) < Math.PI / 2) ? 89.9 : -89.9;
+        } else {
+          const t = -Math.cos(dlon) / Math.tan(decl);
+          lat = Math.max(-89.9, Math.min(89.9, toDeg(Math.atan(t))));
+        }
+        pts.push([lat, lon]);
+      }
+      return { pts, sun };
+    }
+
+    function updateMapOverlays() {
+      // Remove old layers
+      if (deMarker) map.removeLayer(deMarker);
+      if (dxMarker) map.removeLayer(dxMarker);
+      if (pathLine) map.removeLayer(pathLine);
+      if (graylineLayer) map.removeLayer(graylineLayer);
+      if (sunMarker) map.removeLayer(sunMarker);
+
+      // Grayline
+      const { pts, sun } = getGraylineCoords();
+      graylineLayer = L.polyline(pts, {
+        color: '#ff8c00',
+        weight: 3,
+        opacity: 0.85,
+        dashArray: null
+      }).addTo(map);
+
+      // Subsolar point
+      sunMarker = L.circleMarker([sun.lat, sun.lon], {
+        radius: 8,
+        color: '#fff',
+        weight: 2,
+        fillColor: '#ffcc00',
+        fillOpacity: 1
+      }).addTo(map).bindTooltip(`Subsolar ${sun.lat.toFixed(1)}°, ${sun.lon.toFixed(1)}°`);
+
+      // Great-circle path
+      const pathPts = greatCirclePoints(state.de, state.dx);
+      pathLine = L.polyline(pathPts, {
+        color: '#00d4aa',
+        weight: 2.5,
+        opacity: 0.7,
+        dashArray: '8, 6'
+      }).addTo(map);
+
+      // Markers
+      deMarker = L.marker([state.de.lat, state.de.lon], {
+        icon: createIcon('#00d4aa', 'DE'),
+        zIndexOffset: 1000
+      }).addTo(map);
+
+      dxMarker = L.marker([state.dx.lat, state.dx.lon], {
+        icon: createIcon('#ff6b6b', 'DX'),
+        zIndexOffset: 1000
+      }).addTo(map);
+
+      document.getElementById('mapInfo').textContent =
+        `Subsolar ${sun.lat.toFixed(1)}° ${sun.lon.toFixed(1)}° · Grayline active · Click map to set DX`;
+    }
+
+    // ========== Solar data ==========
+    async function fetchSolar() {
+      const status = document.getElementById('solarStatus');
+      try {
+        const res = await fetch('https://www.mapforham.com/hf-propagation/data/solar.json', {
+          cache: 'no-store'
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        state.solar = data;
+
+        document.getElementById('sfi').textContent = data.solar_flux ?? '—';
+        document.getElementById('ssn').textContent = data.sunspots ?? '—';
+        document.getElementById('kp').textContent = data.kp ?? data.k_index ?? '—';
+        document.getElementById('aIndex').textContent = data.a_index ?? '—';
+        document.getElementById('xray').textContent = data.xray_class ?? '—';
+        document.getElementById('bz').textContent = (data.bz != null) ? Number(data.bz).toFixed(1) : '—';
+        document.getElementById('swind').textContent =
+          data.solar_wind_speed != null ? `${Math.round(data.solar_wind_speed)} km/s` : '—';
+
+        status.textContent = `Updated ${new Date(data.updated || Date.now()).toUTCString().slice(17, 25)} UTC`;
+        status.className = 'status ok';
+      } catch (err) {
+        console.warn(err);
+        status.textContent = 'Solar data unavailable';
+        status.className = 'status err';
+      }
+    }
+
+    // ========== UI handlers ==========
+    document.getElementById('btnApply').addEventListener('click', () => {
+      state.de.lat = parseFloat(document.getElementById('deLat').value) || 0;
+      state.de.lon = parseFloat(document.getElementById('deLon').value) || 0;
+      state.dx.lat = parseFloat(document.getElementById('dxLat').value) || 0;
+      state.dx.lon = parseFloat(document.getElementById('dxLon').value) || 0;
+      updatePathInfo();
+      updateMapOverlays();
+    });
+
+    document.getElementById('btnGeo').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        alert('Geolocation not supported');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(pos => {
+        state.de.lat = pos.coords.latitude;
+        state.de.lon = pos.coords.longitude;
+        document.getElementById('deLat').value = state.de.lat.toFixed(4);
+        document.getElementById('deLon').value = state.de.lon.toFixed(4);
+        updatePathInfo();
+        updateMapOverlays();
+        map.setView([state.de.lat, state.de.lon], 4);
+      }, err => alert('Could not get location: ' + err.message));
+    });
+
+    // ========== Init ==========
+    updateClocks();
+    setInterval(updateClocks, 1000);
+    updatePathInfo();
+    initMap();
+    fetchSolar();
+    setInterval(fetchSolar, 5 * 60 * 1000);
+    setInterval(updateMapOverlays, 60 * 1000); // refresh grayline every minute
+  </script>
+</body>
+</html>
